@@ -1,0 +1,4 @@
+`define BOARD_FAMILY_S6
+`define CLK_IN_HZ 50000000
+`define UART_BAUD 115200
+`define COLOR_BITS 4
