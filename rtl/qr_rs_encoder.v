@@ -26,12 +26,10 @@ module qr_rs_encoder #(
             gf_mul = p;
         end
     endfunction
-    reg [7:0] gen [0:PARITY_BYTES];
-    initial begin
-        gen[0]=8'hC1; gen[1]=8'h9D; gen[2]=8'h71; gen[3]=8'h5F; gen[4]=8'h5E;
-        gen[5]=8'hC7; gen[6]=8'h6F; gen[7]=8'h9F; gen[8]=8'hC2; gen[9]=8'hD8;
-        gen[10]=8'h01;
-    end
+    wire [7:0] gen [0:PARITY_BYTES];
+    assign gen[0]=8'hC1; assign gen[1]=8'h9D; assign gen[2]=8'h71; assign gen[3]=8'h5F; assign gen[4]=8'h5E;
+    assign gen[5]=8'hC7; assign gen[6]=8'h6F; assign gen[7]=8'h9F; assign gen[8]=8'hC2; assign gen[9]=8'hD8;
+    assign gen[10]=8'h01;
     reg [7:0] synd      [0:PARITY_BYTES-1];
     reg [7:0] next_synd [0:PARITY_BYTES-1];
     reg [3:0] out_idx;
@@ -87,7 +85,7 @@ module qr_rs_encoder #(
                 end
                 S_OUT: begin
                     if (out_idx < PARITY_BYTES) begin
-                        parity_out   <= synd[out_idx];
+                        parity_out   <= synd[PARITY_BYTES - 1 - out_idx];
                         parity_valid <= 1'b1;
                         out_idx      <= out_idx + 1;
                     end else begin

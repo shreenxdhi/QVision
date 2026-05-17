@@ -44,9 +44,7 @@ module tb_qr_pipeline;
         end
     endtask
     initial begin
-        $display("=== QR Pipeline Testbench Started ===");
-        $display("Testing QR V1-M encoder with 'HELLO' payload");
-        $display("");
+        $display("Testing QR V1-M encoder with 'HELLO' payload\n");
         rst_n = 0;
         uart_rx = 1;  
         btn_commit = 0;
@@ -54,7 +52,6 @@ module tb_qr_pipeline;
         #100;
         rst_n = 1;
         #100;
-        $display("[STEP 1] Sending test data 'HELLO' via UART (115200 baud)...");
         uart_send_byte(8'h48);  
         #(BIT_TIME * 2);        
         uart_send_byte(8'h45);  
@@ -65,21 +62,14 @@ module tb_qr_pipeline;
         #(BIT_TIME * 2);
         uart_send_byte(8'h4F);  
         #(BIT_TIME * 2);
-        $display("[STEP 2] Pressing commit button...");
         #1000;
         btn_commit = 1;
         #1000;
         btn_commit = 0;
-        $display("[STEP 3] Waiting for QR encoding pipeline...");
         wait(dut.matrix_done == 1'b1);
         #1000;
-        $display("[STEP 4] QR encoding complete! Waiting for VGA display...");
-        $display("         QR code area: X=233-406, Y=153-326 (centered 640x480)");
         #5000000;  
-        $display("");
-        $display("============================================");
-        $display("          SIMULATION RESULTS");
-        $display("============================================");
+        $display("\n          SIMULATION RESULTS");
         if (black_pixel_count > 0) begin
             $display("  STATUS: *** PASS ***");
             $display("  QR code is displaying correctly!");
@@ -90,7 +80,6 @@ module tb_qr_pipeline;
             $display("  STATUS: *** FAIL ***");
             $display("  No black pixels detected in QR area!");
         end
-        $display("============================================");
         $finish;
     end
     reg [3:0] prev_led;
@@ -167,4 +156,4 @@ module tb_qr_pipeline;
         if (dut.matrix_done === 1'b1 && matrix_done_prev_tb === 1'b0)
             $display("[%0t] Matrix builder done! FB writes=%0d", $time, fb_write_count);
     end
-endmodule 
+endmodule

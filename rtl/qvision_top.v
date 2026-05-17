@@ -61,8 +61,6 @@ module qvision_top (
     reg        encoder_start;
     reg        buf_committed_prev;
     reg        encoder_done_prev;
-    wire       encoder_done_pulse;
-    assign encoder_done_pulse = encoder_done && !encoder_done_prev;
     always @(posedge clk_in) begin
         if (sync_rst) begin
             buf_committed_prev <= 1'b0;
