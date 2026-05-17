@@ -18,6 +18,17 @@ module qvision_top (
         .rst_n(rst_n),
         .sync_rst(sync_rst)
     );
+
+    wire pix_clk;
+    wire pll_locked;
+    pix_clk_gen pix_clk_gen_inst (
+        .clk_in  (clk_in),
+        .pix_clk (pix_clk),
+        .locked  (pll_locked)
+    );
+
+    wire rst_gated = sync_rst | ~pll_locked;
+
     wire [7:0] uart_data;
     wire uart_valid;
     wire uart_framing_error;
@@ -27,7 +38,7 @@ module qvision_top (
         .BAUD(`UART_BAUD)
     ) uart_rx_inst (
         .clk(clk_in),
-        .rst(sync_rst),
+        .rst(rst_gated),
         .rx(uart_rx),
         .data(uart_data),
         .valid(uart_valid),
@@ -45,7 +56,7 @@ module qvision_top (
     assign matrix_done_pulse = matrix_done && !matrix_done_prev;
     qr_buf qr_buf_inst (
         .clk(clk_in),
-        .rst(sync_rst),
+        .rst(rst_gated),
         .in_byte(uart_data),
         .in_valid(uart_valid),
         .commit(btn_commit),
@@ -62,7 +73,7 @@ module qvision_top (
     reg        buf_committed_prev;
     reg        encoder_done_prev;
     always @(posedge clk_in) begin
-        if (sync_rst) begin
+        if (rst_gated) begin
             buf_committed_prev <= 1'b0;
             encoder_start <= 1'b0;
             encoder_done_prev <= 1'b0;
@@ -92,7 +103,7 @@ module qvision_top (
     end
     qr_encoder qr_encoder_inst (
         .clk(clk_in),
-        .rst(sync_rst),
+        .rst(rst_gated),
         .start(encoder_start),
         .payload_length(buf_length),
         .buf_rd_data(buf_rd_data),
@@ -106,14 +117,14 @@ module qvision_top (
     wire       rs_done;
     reg        rs_start;
     always @(posedge clk_in) begin
-        if (sync_rst)
+        if (rst_gated)
             rs_start <= 1'b0;
         else
             rs_start <= encoder_start;
     end
     qr_rs_encoder qr_rs_encoder_inst (
         .clk(clk_in),
-        .rst(sync_rst),
+        .rst(rst_gated),
         .start(rs_start),
         .data_in(encoder_codeword),
         .data_valid(encoder_valid),
@@ -127,7 +138,7 @@ module qvision_top (
     wire       matrix_done;
     reg        matrix_start;
     always @(posedge clk_in) begin
-        if (sync_rst) begin
+        if (rst_gated) begin
             matrix_start <= 1'b0;
         end else begin
             matrix_start <= encoder_start;  
@@ -135,7 +146,7 @@ module qvision_top (
     end
     qr_matrix_builder qr_matrix_builder_inst (
         .clk(clk_in),
-        .rst(sync_rst),
+        .rst(rst_gated),
         .start(matrix_start),
         .codeword_data(rs_codeword),
         .codeword_valid(rs_valid),
@@ -151,15 +162,15 @@ module qvision_top (
         .addra(fb_wr_addr),
         .dina(fb_wr_din),
         .wea(fb_wr_we),
-        .clkb(clk_in),
+        .clkb(pix_clk),
         .addrb(fb_rd_addr),
         .doutb(fb_rd_dout)
     );
     wire vga_de;
     wire [9:0] vga_x, vga_y;
     vga_timing vga_timing_inst (
-        .pix_clk(clk_in),  
-        .rst(sync_rst),
+        .pix_clk(pix_clk),  
+        .rst(rst_gated),
         .hs(vga_hs),
         .vs(vga_vs),
         .de(vga_de),
@@ -171,8 +182,8 @@ module qvision_top (
         .MODULE_SCALE(6),
         .QUIET_ZONE(4)
     ) qr_pixel_mapper_inst (
-        .pix_clk(clk_in),
-        .rst(sync_rst),
+        .pix_clk(pix_clk),
+        .rst(rst_gated),
         .de(vga_de),
         .x(vga_x),
         .y(vga_y),
@@ -191,7 +202,7 @@ module qvision_top (
     reg uart_activity_toggle;
     reg matrix_done_latch;  
     always @(posedge clk_in) begin
-        if (sync_rst) begin
+        if (rst_gated) begin
             uart_activity_toggle <= 1'b0;
             matrix_done_latch <= 1'b0;
         end else begin

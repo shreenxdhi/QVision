@@ -68,7 +68,7 @@ module tb_qr_pipeline;
         btn_commit = 0;
         wait(dut.matrix_done == 1'b1);
         #1000;
-        #5000000;  
+        #12000000;  // Increased to 12ms because VGA pixel clock is now 25MHz (takes longer to reach QR area)
         $display("\n          SIMULATION RESULTS");
         if (black_pixel_count > 0) begin
             $display("  STATUS: *** PASS ***");
