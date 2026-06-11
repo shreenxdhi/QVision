@@ -22,9 +22,12 @@ module tb_qr_matrix_builder;
         .fb_we(fb_we),
         .done(done)
     );
+    integer writes = 0;
     always @(posedge clk) begin
-        if (fb_we && fb_addr < 441)
+        if (fb_we && fb_addr < 441) begin
             framebuffer[fb_addr] <= fb_din;
+            writes = writes + 1;
+        end
     end
     initial begin
         $display("Starting QR matrix builder test...");
@@ -37,9 +40,24 @@ module tb_qr_matrix_builder;
         #20 rst = 0;
         #20 start = 1;
         #10 start = 0;
+        
+        // Feed 26 dummy bytes
+        for (i = 0; i < 26; i = i + 1) begin
+            #20;
+            codeword_data = i;
+            codeword_valid = 1;
+            #10;
+            codeword_valid = 0;
+        end
+        
         wait(done);
         #100;
-        $display("Simulation complete: Finder and timing patterns drawn");
-        $stop;
+        $display("Simulation complete: Matrix drawn");
+        if (writes == 392) begin
+            $display("STATUS: *** PASS *** (All 392 modules written)");
+        end else begin
+            $display("STATUS: *** FAIL *** (Expected 392 pixels written, got %0d)", writes);
+        end
+        $finish;
     end
 endmodule

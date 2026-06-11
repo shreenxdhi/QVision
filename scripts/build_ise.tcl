@@ -33,28 +33,33 @@ project set synthesis_tool "XST (VHDL/Verilog)"
 project set simulator "ISim (VHDL/Verilog)"
 project set "Verilog Include Directories" "../rtl"
 project set "Verilog 2001" true
+set script_dir [file dirname [file normalize [info script]]]
+set rtl_dir [file join $script_dir "../rtl"]
+set ucf_dir [file join $script_dir "../ucf"]
+
 puts "Adding RTL source files..."
-set rtl_files [glob -directory ../rtl *.v]
+set rtl_files [glob -directory $rtl_dir *.v]
 foreach file $rtl_files {
     puts "  Adding: $file"
     xfile add $file
 }
-if {[file exists "../rtl/qvision_config.vh"]} {
-    puts "  Adding: ../rtl/qvision_config.vh"  
-    xfile add "../rtl/qvision_config.vh"
+if {[file exists "$rtl_dir/qvision_config.vh"]} {
+    puts "  Adding: $rtl_dir/qvision_config.vh"  
+    xfile add "$rtl_dir/qvision_config.vh"
 }
-if {[file exists "../ucf/$ucf_file"]} {
-    puts "Adding UCF constraints: ../ucf/$ucf_file"
-    xfile add "../ucf/$ucf_file"
+if {[file exists "$ucf_dir/$ucf_file"]} {
+    puts "Adding UCF constraints: $ucf_dir/$ucf_file"
+    xfile add "$ucf_dir/$ucf_file"
 } else {
-    puts "WARNING: UCF file not found: ../ucf/$ucf_file"
+    puts "ERROR: UCF file not found: $ucf_dir/$ucf_file"
+    exit 1
 }
 puts "Setting top module: $top_module"
 project set top $top_module
 puts "Configuring synthesis settings..."
 project set "Optimization Goal" "Speed"
 project set "Optimization Effort" "Normal"
-project set "Synthesis Constraints File" "../ucf/$ucf_file"
+project set "Synthesis Constraints File" "$ucf_dir/$ucf_file"
 project set "RAM Style" "Auto"
 project set "ROM Style" "Auto"
 project set "Place & Route Effort Level (Overall)" "High"
@@ -62,7 +67,7 @@ project save
 puts "========================================"
 puts "Starting synthesis..."
 process run "Synthesize - XST"
-if {[process get "Synthesize - XST" status] != "up_to_date"} {
+if {[process get "Synthesize - XST" status] == "errors"} {
     puts "ERROR: Synthesis failed!"
     exit 1
 }
@@ -71,26 +76,26 @@ puts "========================================"
 puts "Starting implementation..."
 puts "Running Translate..."
 process run "Translate"
-if {[process get "Translate" status] != "up_to_date"} {
+if {[process get "Translate" status] == "errors"} {
     puts "ERROR: Translate failed!"
     exit 1
 }
 puts "Running Map..."
 process run "Map"
-if {[process get "Map" status] != "up_to_date"} {
+if {[process get "Map" status] == "errors"} {
     puts "ERROR: Map failed!"
     exit 1
 }
 puts "Running Place & Route..."
 process run "Place & Route"
-if {[process get "Place & Route" status] != "up_to_date"} {
+if {[process get "Place & Route" status] == "errors"} {
     puts "ERROR: Place & Route failed!"
     exit 1
 }
 puts "========================================"
 puts "Generating bitstream..."
 process run "Generate Programming File"
-if {[process get "Generate Programming File" status] != "up_to_date"} {
+if {[process get "Generate Programming File" status] == "errors"} {
     puts "ERROR: Bitstream generation failed!"
     exit 1
 }

@@ -8,24 +8,31 @@ module tb_qr_format_bch;
         .mask_id(mask_id),
         .format_bits(format_bits)
     );
+    
+    integer errors = 0;
+    
     initial begin
         $display("Starting QR format BCH test...");
-        $display("Note: This is a basic sanity check - verify outputs manually");
-        ec_level = 2'b00;
-        mask_id = 3'b000;
-        #10;
-        $display("EC=M, Mask=0: Format = 15'b%15b (0x%04X)", format_bits, format_bits);
+        
+        // EC Level M (00), Mask 0
+        ec_level = 2'b00; mask_id = 3'b000; #10;
         if (format_bits !== 15'b101010000010010) begin
-            $display("Note: Verify this matches QR spec for EC Level M, Mask 0");
+            $display("FAIL: Expected 15'b101010000010010, got 15'b%b", format_bits);
+            errors = errors + 1;
         end
-        mask_id = 3'b001;
-        #10;
-        $display("EC=M, Mask=1: Format = 15'b%15b (0x%04X)", format_bits, format_bits);
-        mask_id = 3'b111;
-        #10;
-        $display("EC=M, Mask=7: Format = 15'b%15b (0x%04X)", format_bits, format_bits);
-        $display("Format BCH test completed");
-        $display("Verify outputs manually against QR code specification");
-        #100 $stop;
+        
+        // EC Level M (00), Mask 1
+        ec_level = 2'b00; mask_id = 3'b001; #10;
+        if (format_bits !== 15'b101000100100101) begin
+            $display("FAIL: Expected 15'b101000100100101, got 15'b%b", format_bits);
+            errors = errors + 1;
+        end
+        
+        if (errors == 0)
+            $display("STATUS: *** PASS ***");
+        else
+            $display("STATUS: *** FAIL *** with %0d errors", errors);
+            
+        $finish;
     end
 endmodule

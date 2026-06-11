@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+// This testbench requires sim/pix_clk_gen_sim.v to be included
 module tb_qr_pipeline;
     reg clk_in;
     reg rst_n;
@@ -11,10 +12,13 @@ module tb_qr_pipeline;
     wire [3:0] vga_g;
     wire [3:0] vga_b;
     wire [3:0] led;
+
+    // 50 MHz system clock (20 ns period)
     initial begin
         clk_in = 0;
-        forever #10 clk_in = ~clk_in;  
+        forever #10 clk_in = ~clk_in;
     end
+
     qvision_top dut (
         .clk_in(clk_in),
         .rst_n(rst_n),
@@ -28,47 +32,65 @@ module tb_qr_pipeline;
         .vga_b(vga_b),
         .led(led)
     );
+
+    // 115200 baud UART bit time in ns (1/115200 ≈ 8680 ns)
     localparam BIT_TIME = 8680;
+
     task uart_send_byte;
         input [7:0] data;
         integer i;
         begin
-            uart_rx = 0;
+            uart_rx = 0;                            // start bit
             #BIT_TIME;
             for (i = 0; i < 8; i = i + 1) begin
                 uart_rx = data[i];
                 #BIT_TIME;
             end
-            uart_rx = 1;
+            uart_rx = 1;                            // stop bit
             #BIT_TIME;
         end
     endtask
+
     initial begin
         $display("Testing QR V1-M encoder with 'HELLO' payload\n");
-        rst_n = 0;
-        uart_rx = 1;  
+        rst_n      = 0;
+        uart_rx    = 1;   // UART idle is high
         btn_commit = 0;
-        btn_clear = 0;
+        btn_clear  = 0;
         #100;
         rst_n = 1;
         #100;
-        uart_send_byte(8'h48);  
-        #(BIT_TIME * 2);        
-        uart_send_byte(8'h45);  
+        uart_send_byte(8'h48);  // H
         #(BIT_TIME * 2);
-        uart_send_byte(8'h4C);  
+        uart_send_byte(8'h45);  // E
         #(BIT_TIME * 2);
-        uart_send_byte(8'h4C);  
+        uart_send_byte(8'h4C);  // L
         #(BIT_TIME * 2);
-        uart_send_byte(8'h4F);  
+        uart_send_byte(8'h4C);  // L
+        #(BIT_TIME * 2);
+        uart_send_byte(8'h4F);  // O
         #(BIT_TIME * 2);
         #1000;
         btn_commit = 1;
         #1000;
         btn_commit = 0;
-        wait(dut.matrix_done == 1'b1);
+
+        // Add a parallel timeout branch so the testbench
+        // always terminates with an informative message.
+        fork
+            begin : wait_done
+                wait (dut.matrix_done === 1'b1);
+                disable wait_timeout;
+            end
+            begin : wait_timeout
+                #50_000_000;   // 50 ms timeout at 50 MHz = 2 500 000 cycles
+                $display("[TIMEOUT] matrix_done never asserted — pipeline stalled!");
+                $finish;
+            end
+        join
+
         #1000;
-        #12000000;  // Increased to 12ms because VGA pixel clock is now 25MHz (takes longer to reach QR area)
+        #12000000;  // Allow VGA to scan through the QR display area
         $display("\n          SIMULATION RESULTS");
         if (black_pixel_count > 0) begin
             $display("  STATUS: *** PASS ***");
@@ -82,6 +104,8 @@ module tb_qr_pipeline;
         end
         $finish;
     end
+
+    // LED / RGB change logger
     reg [3:0] prev_led;
     reg [3:0] prev_rgb;
     initial begin
@@ -90,27 +114,31 @@ module tb_qr_pipeline;
     end
     always @(posedge clk_in) begin
         if (led !== prev_led) begin
-            $display("Time=%0t | LED=%b | HS=%b VS=%b | R=%h G=%h B=%h", 
+            $display("Time=%0t | LED=%b | HS=%b VS=%b | R=%h G=%h B=%h",
                      $time, led, vga_hs, vga_vs, vga_r, vga_g, vga_b);
             prev_led <= led;
         end
     end
+
+    // QR area pixel counter
     reg qr_area_logged;
     reg black_pixel_logged;
     reg [31:0] black_pixel_count;
     reg [31:0] white_pixel_count;
-    reg [9:0] first_black_x, first_black_y;
+    reg [9:0]  first_black_x, first_black_y;
     initial begin
-        qr_area_logged = 0;
+        qr_area_logged    = 0;
         black_pixel_logged = 0;
-        black_pixel_count = 0;
-        white_pixel_count = 0;
-        first_black_x = 0;
-        first_black_y = 0;
+        black_pixel_count  = 0;
+        white_pixel_count  = 0;
+        first_black_x      = 0;
+        first_black_y      = 0;
     end
-    wire in_qr_data_area = dut.vga_de && 
+
+    wire in_qr_data_area = dut.vga_de &&
                            (dut.vga_x >= 257) && (dut.vga_x < 383) &&
                            (dut.vga_y >= 177) && (dut.vga_y < 303);
+
     always @(posedge clk_in) begin
         if (!qr_area_logged && dut.vga_de && dut.vga_x >= 233 && dut.vga_y >= 153) begin
             $display("[%0t] VGA entered QR display area", $time);
@@ -120,10 +148,10 @@ module tb_qr_pipeline;
             if (vga_r == 4'h0 && vga_g == 4'h0 && vga_b == 4'h0) begin
                 black_pixel_count <= black_pixel_count + 1;
                 if (!black_pixel_logged) begin
-                    $display("[%0t] First BLACK PIXEL at x=%0d, y=%0d - QR code visible!", 
+                    $display("[%0t] First BLACK PIXEL at x=%0d, y=%0d - QR code visible!",
                              $time, dut.vga_x, dut.vga_y);
-                    first_black_x <= dut.vga_x;
-                    first_black_y <= dut.vga_y;
+                    first_black_x     <= dut.vga_x;
+                    first_black_y     <= dut.vga_y;
                     black_pixel_logged <= 1;
                 end
             end else begin
@@ -131,19 +159,21 @@ module tb_qr_pipeline;
             end
         end
     end
+
+    // Pipeline progress logger
     reg rs_done_prev_tb, matrix_done_prev_tb;
     reg [15:0] fb_write_count;
     initial begin
-        rs_done_prev_tb = 0;
+        rs_done_prev_tb    = 0;
         matrix_done_prev_tb = 0;
-        fb_write_count = 0;
+        fb_write_count      = 0;
     end
     always @(posedge clk_in) begin
         if (dut.fb_wr_we)
             fb_write_count <= fb_write_count + 1;
     end
     always @(posedge clk_in) begin
-        rs_done_prev_tb <= dut.rs_done;
+        rs_done_prev_tb     <= dut.rs_done;
         matrix_done_prev_tb <= dut.matrix_done;
         if (dut.buf_committed === 1'b1 && dut.buf_committed_prev === 1'b0)
             $display("[%0t] Buffer committed! Length=%0d", $time, dut.buf_length);

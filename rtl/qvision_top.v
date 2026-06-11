@@ -12,27 +12,93 @@ module qvision_top (
     output wire [3:0] vga_b,
     output wire [3:0] led
 );
+    // -------------------------------------------------------------------------
+    // Net Declarations
+    // -------------------------------------------------------------------------
     wire sync_rst;
+    wire pix_clk;
+    wire pll_locked;
+    wire rst_gated;
+    
+    wire btn_commit_sync;
+    wire btn_clear_sync;
+    wire btn_commit_pulse;
+    wire btn_clear_pulse;
+    
+    wire [7:0] uart_data;
+    wire uart_valid;
+    wire uart_framing_error;
+    wire uart_overflow;
+    
+    wire [7:0] buf_rd_data;
+    wire       buf_rd_en;
+    wire [7:0] buf_length;
+    wire       buf_committed;
+    wire       buf_overflow;
+    wire       matrix_done_pulse;
+    wire       matrix_done;
+    
+    wire [7:0] encoder_codeword;
+    wire       encoder_valid;
+    wire       encoder_done;
+    
+    wire [7:0] rs_codeword;
+    wire       rs_valid;
+    wire       rs_done;
+    
+    wire [8:0] fb_wr_addr;
+    wire       fb_wr_din;
+    wire       fb_wr_we;
+    
+    wire [8:0] fb_rd_addr;
+    wire       fb_rd_dout;
+    
+    wire vga_de;
+    wire [9:0] vga_x, vga_y;
+    wire pixel_out;
+
+    // -------------------------------------------------------------------------
+    // Reset synchroniser
+    // -------------------------------------------------------------------------
     reset_sync rst_sync_inst (
         .clk(clk_in),
         .rst_n(rst_n),
         .sync_rst(sync_rst)
     );
 
-    wire pix_clk;
-    wire pll_locked;
+    // -------------------------------------------------------------------------
+    // Pixel clock (25 MHz from 50 MHz input via PLL)
+    // -------------------------------------------------------------------------
     pix_clk_gen pix_clk_gen_inst (
         .clk_in  (clk_in),
         .pix_clk (pix_clk),
         .locked  (pll_locked)
     );
 
-    wire rst_gated = sync_rst | ~pll_locked;
+    assign rst_gated = sync_rst | ~pll_locked;
 
-    wire [7:0] uart_data;
-    wire uart_valid;
-    wire uart_framing_error;
-    wire uart_overflow;
+    // -------------------------------------------------------------------------
+    // Button synchronisers and edge detectors
+    // -------------------------------------------------------------------------
+    reg btn_commit_ff1, btn_commit_ff2, btn_commit_ff3;
+    reg btn_clear_ff1,  btn_clear_ff2,  btn_clear_ff3;
+    always @(posedge clk_in) begin
+        if (rst_gated) begin
+            btn_commit_ff1 <= 1'b0; btn_commit_ff2 <= 1'b0; btn_commit_ff3 <= 1'b0;
+            btn_clear_ff1  <= 1'b0; btn_clear_ff2  <= 1'b0; btn_clear_ff3  <= 1'b0;
+        end else begin
+            btn_commit_ff1 <= btn_commit; btn_commit_ff2 <= btn_commit_ff1; btn_commit_ff3 <= btn_commit_ff2;
+            btn_clear_ff1  <= btn_clear;  btn_clear_ff2  <= btn_clear_ff1;  btn_clear_ff3  <= btn_clear_ff2;
+        end
+    end
+    assign btn_commit_sync  = btn_commit_ff2;
+    assign btn_clear_sync   = btn_clear_ff2;
+    assign btn_commit_pulse = btn_commit_ff2 & ~btn_commit_ff3;
+    assign btn_clear_pulse  = btn_clear_ff2  & ~btn_clear_ff3;
+
+    // -------------------------------------------------------------------------
+    // UART receiver
+    // -------------------------------------------------------------------------
     uart_rx #(
         .CLK_HZ(`CLK_IN_HZ),
         .BAUD(`UART_BAUD)
@@ -43,56 +109,62 @@ module qvision_top (
         .data(uart_data),
         .valid(uart_valid),
         .framing_error(uart_framing_error),
-        .overflow(uart_overflow)
+        .overflow(uart_overflow),
+        .overflow_clr(btn_clear_pulse)
     );
-    wire [7:0] buf_rd_data;
-    wire       buf_rd_en;
-    wire [7:0] buf_length;
-    wire       buf_committed;
-    reg        buf_clear;
+
+    // -------------------------------------------------------------------------
+    // QR input buffer
+    // -------------------------------------------------------------------------
+    reg buf_clear;
     reg pipeline_busy;
-    wire matrix_done_pulse;
     reg matrix_done_prev;
     assign matrix_done_pulse = matrix_done && !matrix_done_prev;
+
     qr_buf qr_buf_inst (
         .clk(clk_in),
         .rst(rst_gated),
         .in_byte(uart_data),
         .in_valid(uart_valid),
-        .commit(btn_commit),
+        .commit(btn_commit_pulse),
         .clear(buf_clear),
         .rd_data(buf_rd_data),
         .rd_en(buf_rd_en),
         .length(buf_length),
-        .committed_flag(buf_committed)
+        .committed_flag(buf_committed),
+        .overflow_flag(buf_overflow)
     );
-    wire [7:0] encoder_codeword;
-    wire       encoder_valid;
-    wire       encoder_done;
-    reg        encoder_start;
-    reg        buf_committed_prev;
-    reg        encoder_done_prev;
+
+    // -------------------------------------------------------------------------
+    // Pipeline control FSM
+    // -------------------------------------------------------------------------
+    reg encoder_start;
+    reg buf_committed_prev;
+    reg encoder_done_prev;
+
     always @(posedge clk_in) begin
         if (rst_gated) begin
             buf_committed_prev <= 1'b0;
-            encoder_start <= 1'b0;
-            encoder_done_prev <= 1'b0;
-            matrix_done_prev <= 1'b0;
-            pipeline_busy <= 1'b0;
-            buf_clear <= 1'b0;
+            encoder_start      <= 1'b0;
+            encoder_done_prev  <= 1'b0;
+            matrix_done_prev   <= 1'b0;
+            pipeline_busy      <= 1'b0;
+            buf_clear          <= 1'b0;
         end else begin
             buf_committed_prev <= buf_committed;
-            encoder_done_prev <= encoder_done;
-            matrix_done_prev <= matrix_done;
-            buf_clear <= 1'b0;  
-            if (btn_clear) begin
-                buf_clear <= 1'b1;
+            encoder_done_prev  <= encoder_done;
+            matrix_done_prev   <= matrix_done;
+            buf_clear          <= 1'b0;
+
+            if (btn_clear_pulse) begin
+                buf_clear     <= 1'b1;
                 pipeline_busy <= 1'b0;
             end
             else if (matrix_done_pulse) begin
-                buf_clear <= 1'b1;
+                buf_clear     <= 1'b1;
                 pipeline_busy <= 1'b0;
             end
+
             if (buf_committed && !buf_committed_prev && !pipeline_busy) begin
                 encoder_start <= 1'b1;
                 pipeline_busy <= 1'b1;
@@ -101,6 +173,10 @@ module qvision_top (
             end
         end
     end
+
+    // -------------------------------------------------------------------------
+    // Data encoder
+    // -------------------------------------------------------------------------
     qr_encoder qr_encoder_inst (
         .clk(clk_in),
         .rst(rst_gated),
@@ -112,16 +188,18 @@ module qvision_top (
         .codeword_valid(encoder_valid),
         .done(encoder_done)
     );
-    wire [7:0] rs_codeword;
-    wire       rs_valid;
-    wire       rs_done;
-    reg        rs_start;
+
+    // -------------------------------------------------------------------------
+    // Reed-Solomon error-correction encoder
+    // -------------------------------------------------------------------------
+    reg rs_start;
     always @(posedge clk_in) begin
         if (rst_gated)
             rs_start <= 1'b0;
         else
             rs_start <= encoder_start;
     end
+
     qr_rs_encoder qr_rs_encoder_inst (
         .clk(clk_in),
         .rst(rst_gated),
@@ -132,18 +210,19 @@ module qvision_top (
         .parity_valid(rs_valid),
         .done(rs_done)
     );
-    wire [8:0] fb_wr_addr;
-    wire       fb_wr_din;
-    wire       fb_wr_we;
-    wire       matrix_done;
-    reg        matrix_start;
+
+    // -------------------------------------------------------------------------
+    // QR matrix builder
+    // -------------------------------------------------------------------------
+    reg matrix_start;
     always @(posedge clk_in) begin
         if (rst_gated) begin
             matrix_start <= 1'b0;
         end else begin
-            matrix_start <= encoder_start;  
+            matrix_start <= encoder_start;
         end
     end
+
     qr_matrix_builder qr_matrix_builder_inst (
         .clk(clk_in),
         .rst(rst_gated),
@@ -155,8 +234,10 @@ module qvision_top (
         .fb_we(fb_wr_we),
         .done(matrix_done)
     );
-    wire [8:0] fb_rd_addr;
-    wire       fb_rd_dout;
+
+    // -------------------------------------------------------------------------
+    // Dual-port framebuffer
+    // -------------------------------------------------------------------------
     qr_framebuffer qr_framebuffer_inst (
         .clka(clk_in),
         .addra(fb_wr_addr),
@@ -166,10 +247,12 @@ module qvision_top (
         .addrb(fb_rd_addr),
         .doutb(fb_rd_dout)
     );
-    wire vga_de;
-    wire [9:0] vga_x, vga_y;
+
+    // -------------------------------------------------------------------------
+    // VGA timing
+    // -------------------------------------------------------------------------
     vga_timing vga_timing_inst (
-        .pix_clk(pix_clk),  
+        .pix_clk(pix_clk),
         .rst(rst_gated),
         .hs(vga_hs),
         .vs(vga_vs),
@@ -177,7 +260,10 @@ module qvision_top (
         .x(vga_x),
         .y(vga_y)
     );
-    wire pixel_out;
+
+    // -------------------------------------------------------------------------
+    // QR pixel mapper
+    // -------------------------------------------------------------------------
     qr_pixel_mapper #(
         .MODULE_SCALE(6),
         .QUIET_ZONE(4)
@@ -191,32 +277,39 @@ module qvision_top (
         .fb_data(fb_rd_dout),
         .pixel_out(pixel_out)
     );
+
+    // -------------------------------------------------------------------------
+    // RGB DAC output
+    // -------------------------------------------------------------------------
     rgb_dac_out #(
         .COLOR_BITS(`COLOR_BITS)
     ) rgb_dac_inst (
         .pixel_in(pixel_out),
         .r(vga_r),
-        .g(vga_g), 
+        .g(vga_g),
         .b(vga_b)
     );
+
+    // -------------------------------------------------------------------------
+    // Status LEDs
+    // -------------------------------------------------------------------------
     reg uart_activity_toggle;
-    reg matrix_done_latch;  
+    reg matrix_done_latch;
     always @(posedge clk_in) begin
         if (rst_gated) begin
             uart_activity_toggle <= 1'b0;
-            matrix_done_latch <= 1'b0;
+            matrix_done_latch    <= 1'b0;
         end else begin
-            if (uart_valid) begin
+            if (uart_valid)
                 uart_activity_toggle <= ~uart_activity_toggle;
-            end
             if (matrix_done)
                 matrix_done_latch <= 1'b1;
             else if (buf_clear)
                 matrix_done_latch <= 1'b0;
         end
     end
-    assign led[0] = matrix_done_latch;       
-    assign led[1] = uart_activity_toggle;    
-    assign led[2] = buf_committed;           
-    assign led[3] = uart_framing_error;      
+    assign led[0] = matrix_done_latch;
+    assign led[1] = uart_activity_toggle;
+    assign led[2] = buf_overflow | uart_overflow;
+    assign led[3] = uart_framing_error;
 endmodule

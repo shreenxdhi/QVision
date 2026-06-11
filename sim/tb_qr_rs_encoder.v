@@ -4,7 +4,7 @@ module tb_qr_rs_encoder;
     reg  [7:0]  data_in;
     wire [7:0]  parity_out;
     wire        parity_valid, done;
-    qr_rs_encoder #(.PARITY_BYTES(10)) dut (
+    qr_rs_encoder dut (
         .clk(clk), .rst(rst), .start(start),
         .data_in(data_in), .data_valid(data_valid),
         .parity_out(parity_out), .parity_valid(parity_valid), .done(done)
