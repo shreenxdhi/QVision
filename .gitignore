@@ -53,3 +53,6 @@ _xmsgs/
 transcript
 vsim.wlf
 modelsim.ini
+vivado_qvision/
+*.log
+*.jou

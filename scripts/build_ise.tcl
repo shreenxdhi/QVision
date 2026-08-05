@@ -8,14 +8,12 @@ set ucf_file [lindex $argv 1]
 set top_module [lindex $argv 2]
 set ise_version [lindex $argv 3]
 set family [lindex $argv 4]
-puts "========================================"
 puts "QVision ISE Build Script"
 puts "Part: $part"
 puts "UCF: $ucf_file"
 puts "Top: $top_module"
 puts "ISE: $ise_version"
 puts "Family: $family"
-puts "========================================"
 set project_name "qvision"
 if {[file exists "$project_name.xise"]} {
     puts "Removing existing project..."
@@ -36,7 +34,6 @@ project set "Verilog 2001" true
 set script_dir [file dirname [file normalize [info script]]]
 set rtl_dir [file join $script_dir "../rtl"]
 set ucf_dir [file join $script_dir "../ucf"]
-
 puts "Adding RTL source files..."
 set rtl_files [glob -directory $rtl_dir *.v]
 foreach file $rtl_files {
@@ -64,7 +61,6 @@ project set "RAM Style" "Auto"
 project set "ROM Style" "Auto"
 project set "Place & Route Effort Level (Overall)" "High"
 project save
-puts "========================================"
 puts "Starting synthesis..."
 process run "Synthesize - XST"
 if {[process get "Synthesize - XST" status] == "errors"} {
@@ -72,7 +68,6 @@ if {[process get "Synthesize - XST" status] == "errors"} {
     exit 1
 }
 puts "Synthesis completed successfully."
-puts "========================================"
 puts "Starting implementation..."
 puts "Running Translate..."
 process run "Translate"
@@ -92,17 +87,14 @@ if {[process get "Place & Route" status] == "errors"} {
     puts "ERROR: Place & Route failed!"
     exit 1
 }
-puts "========================================"
 puts "Generating bitstream..."
 process run "Generate Programming File"
 if {[process get "Generate Programming File" status] == "errors"} {
     puts "ERROR: Bitstream generation failed!"
     exit 1
 }
-puts "========================================"
 puts "Build completed successfully!"
 puts "Bitstream: $project_name.bit"
-puts "========================================"
 puts "Generating reports..."
 if {[file exists "$project_name.twr"]} {
     puts "Timing report generated: $project_name.twr"
