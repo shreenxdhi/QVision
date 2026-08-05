@@ -56,3 +56,4 @@ modelsim.ini
 vivado_qvision/
 *.log
 *.jou
+*.str
