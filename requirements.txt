@@ -1,0 +1,5 @@
+numpy==2.5.3
+opencv-python-headless==5.0.0.93
+qrcode==8.2
+pyserial==3.5
+zxing-cpp==3.1.1
